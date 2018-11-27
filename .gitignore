@@ -1,0 +1,10 @@
+.stack-work
+dist
+dist-newstyle
+cabal.project.local
+.vscode
+.idea
+*.iml
+cabal.config
+stderr.log
+TODO
