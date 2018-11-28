@@ -27,13 +27,39 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Lib, Widgets.Edit
   other-modules:
       Paths_brick_test
   hs-source-dirs:
       src
   build-depends:
       base >=4.7 && <5
+    , brick
+    , vty
+    , text
+    , microlens >= 0.3.0.0
+    , microlens-th
+    , text-zipper
+
+  default-language: Haskell2010
+
+executable editor
+  main-is: Editor.hs
+  other-modules:
+      Paths_brick_test
+  hs-source-dirs:
+      app
+  ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  build-depends:
+      base >=4.7 && <5
+    , brick-test
+    , brick
+    , vty
+    , text
+    , microlens >= 0.3.0.0
+    , microlens-th
+    , text-zipper
+
   default-language: Haskell2010
 
 executable edit-demo
@@ -58,25 +84,6 @@ executable edit-demo
 
 executable mousedemo
   main-is: MouseDemo.hs
-  other-modules:
-      Paths_brick_test
-  hs-source-dirs:
-      app
-  ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  build-depends:
-      base >=4.7 && <5
-    , brick-test
-    , brick
-    , vty
-    , text
-    , microlens >= 0.3.0.0
-    , microlens-th
-    , text-zipper
-
-  default-language: Haskell2010
-
-executable editor
-  main-is: Editor.hs
   other-modules:
       Paths_brick_test
   hs-source-dirs:

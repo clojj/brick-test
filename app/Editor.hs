@@ -20,7 +20,7 @@ import           Brick.Types                    ( Widget
                                                 , ViewportType(Vertical)
                                                 )
 import qualified Brick.Main                    as M
-import qualified Brick.Widgets.Edit            as E
+import qualified Widgets.Edit                  as E
 import qualified Brick.Widgets.Center          as C
 import qualified Brick.Widgets.Border          as B
 import           Brick.Widgets.Core
