@@ -1,0 +1,3 @@
+[submodule "haskell-tree-sitter"]
+	path = haskell-tree-sitter
+	url = https://github.com/clojj/haskell-tree-sitter.git
