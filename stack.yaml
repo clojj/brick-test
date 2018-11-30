@@ -34,6 +34,12 @@ resolver: lts-12.20
 #  - wai
 packages:
 - .
+- location: haskell-tree-sitter
+  extra-dep: true
+- location: haskell-tree-sitter/languages/common
+  extra-dep: true
+- location: haskell-tree-sitter/languages/haskell
+  extra-dep: true
 # Dependency packages to be pulled from upstream that are not in the resolver
 # using the same syntax as the packages field.
 # (e.g., acme-missiles-0.3)

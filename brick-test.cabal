@@ -40,7 +40,9 @@ library
     , microlens >= 0.3.0.0
     , microlens-th
     , text-zipper
-
+    , haskell-tree-sitter
+    , tree-sitter-haskell
+    , tree-sitter-common
   default-language: Haskell2010
 
 executable editor

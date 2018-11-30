@@ -56,6 +56,24 @@ import Brick.Types
 import Brick.Widgets.Core
 import Brick.AttrMap
 
+import           TreeSitter.CursorApi.Cursor
+
+import           TreeSitter.Parser
+import           TreeSitter.Tree
+import           TreeSitter.Language
+import           TreeSitter.Haskell
+import           TreeSitter.Node
+import           TreeSitter.TsInputEdit
+import           TreeSitter.TsPoint
+
+import           Foreign.ForeignPtr
+import           Foreign.C
+import           Foreign.C.String
+import           Foreign.C.Types
+import           Foreign.Ptr                    ( Ptr(..)
+                                                , nullPtr
+                                                )
+
 -- | Editor state.  Editors support the following events by default:
 --
 -- * Ctrl-a: go to beginning of line
