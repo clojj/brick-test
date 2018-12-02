@@ -29,26 +29,7 @@ import           Brick.Widgets.Core
 import           Data.Text.Zipper               ( moveCursor )
 import           Data.Tuple                     ( swap )
 
-import           TreeSitter.CursorApi.Cursor
-
-import           TreeSitter.Parser
-import           TreeSitter.Tree
-import           TreeSitter.Language
-import           TreeSitter.Haskell
-import           TreeSitter.Node
-import           TreeSitter.TsInputEdit
-import           TreeSitter.TsPoint
-
-import           Foreign.ForeignPtr
-import           Foreign.C
-import           Foreign.C.String
-import           Foreign.C.Types
-import           Foreign.Ptr                    ( Ptr(..)
-                                                , nullPtr
-                                                )
-import Control.Monad.IO.Class (liftIO)
-import System.IO
-import Data.Maybe
+import qualified Data.Text as T
 
 
 data Name = Prose | TextBox
@@ -58,9 +39,7 @@ data St =
     St { _clicked :: [T.Extent Name]
        , _lastReportedClick :: Maybe (Name, T.Location)
        , _prose :: String
-       , _edit :: E.Editor String Name
-       , _tree :: Maybe (Ptr Tree)
-       , _fgnPtrCursor :: Maybe (ForeignPtr Cursor)
+       , _edit :: E.Editor T.Text Name
        }
 
 makeLenses ''St
@@ -70,7 +49,7 @@ drawUi st = [editorLayer st <+> proseLayer st]
 
 editorLayer :: St -> Widget Name
 editorLayer st = C.hCenterLayer
-  (vLimit 20 $ hLimit 80 $ E.renderEditor (str . unlines) True (st ^. edit))
+  (vLimit 20 $ hLimit 80 $ E.renderEditor (txt . T.unlines) True (st ^. edit))
 
 proseLayer :: St -> Widget Name
 proseLayer st =
@@ -100,20 +79,10 @@ appEvent st (T.VtyEvent (V.EvKey V.KDown [V.MCtrl])) =
   M.vScrollBy (M.viewportScroll Prose) 1 >> M.continue st
 
 appEvent st (T.VtyEvent (V.EvKey V.KEsc [])) = 
-  -- TODO funptr_ts_cursor_free fgnPtrCursor
+  -- TODO in Edit.hs: funptr_ts_cursor_free fgnPtrCursor
   M.halt st
 
-appEvent st (T.VtyEvent ev) = do
-  st' <- T.handleEventLensed st edit E.handleEditorEvent ev
-  newTree <- liftIO $ do
-    (str, len) <- newCStringLen $ unlines $ E.getEditContents (_edit st)
-    withForeignPtr (fromJust $ st ^. fgnPtrCursor) $ \cur -> do
-      tree      <- hts_parser_parse_string str (fromIntegral len)
-      ts_cursor_reset_root tree cur
-      spanInfos <- tsTransformSpanInfos cur
-      hPrint stderr (reverse spanInfos)
-      return tree
-  M.continue (st' & (tree ?~ newTree))
+appEvent st (T.VtyEvent ev) = M.continue =<< T.handleEventLensed st edit E.handleEditorEvent ev
 
 appEvent st _ = M.continue st
 
@@ -131,15 +100,8 @@ app = M.App
 
 initEvent :: St -> T.EventM Name St
 initEvent st = do
-  (fpc, initialTree) <- liftIO $ do
-    (str, len) <- newCStringLen $ unlines $ E.getEditContents (_edit st)
-    tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
-    fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
-    -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
-    withForeignPtr fgnPtrCursor $ \cur -> do
-      ts_cursor_init tree cur
-    return (fgnPtrCursor, tree)
-  return $ st & (tree ?~ initialTree) & (fgnPtrCursor ?~ fpc)
+  edit' <- E.initEvent (st^.edit)
+  return $ st & edit .~ edit'
 
 main :: IO ()
 main = do
@@ -170,7 +132,5 @@ main = do
            \Excepteur sint occaecat cupidatat not proident,\n\
            \sunt in culpa qui officia deserunt mollit\n\
            \anim id est laborum.\n"
-    (E.editor TextBox Nothing "")
-    Nothing
-    Nothing
+    (E.editor TextBox Nothing "" Nothing Nothing Nothing)
 

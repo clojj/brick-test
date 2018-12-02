@@ -20,6 +20,7 @@
 -- you want to build your own editor, I suggest starting from scratch.
 module Widgets.Edit
   ( Editor(editContents, editorName)
+  , initEvent
   -- * Constructing an editor
   , editor
   , editorText
@@ -57,6 +58,7 @@ import Brick.Widgets.Core
 import Brick.AttrMap
 
 import           TreeSitter.CursorApi.Cursor
+import           TreeSitter.CursorApi.Types
 
 import           TreeSitter.Parser
 import           TreeSitter.Tree
@@ -73,6 +75,7 @@ import           Foreign.C.Types
 import           Foreign.Ptr                    ( Ptr(..)
                                                 , nullPtr
                                                 )
+import Data.Maybe
 
 -- | Editor state.  Editors support the following events by default:
 --
@@ -89,6 +92,9 @@ data Editor t n =
            -- ^ The contents of the editor
            , editorName :: n
            -- ^ The name of the editor
+           , tree :: Maybe (Ptr Tree)
+           , fgnPtrCursor :: Maybe (ForeignPtr Cursor)
+           , spanInfos :: Maybe [SpanInfo]
            }
 
 suffixLenses ''Editor
@@ -104,31 +110,45 @@ instance (Show t, Show n) => Show (Editor t n) where
 instance Named (Editor t n) n where
     getName = editorName
 
-handleEditorEvent :: (Eq t, Monoid t) => Event -> Editor t n -> EventM n (Editor t n)
+initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
+initEvent ed = do
+  (fpc, initialTree) <- liftIO $ do
+    (str, len) <- newCStringLen $ T.unpack $ T.unlines $ Z.getText (editContents ed)
+    tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
+    fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
+    -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
+    withForeignPtr fgnPtrCursor $ \cur -> ts_cursor_init tree cur
+    return (fgnPtrCursor, tree)
+  return $ ed { tree = Just initialTree, fgnPtrCursor = Just fpc }
+
+handleEditorEvent :: Event -> Editor T.Text n -> EventM n (Editor T.Text n)
 handleEditorEvent e ed =
-        let f = case e of
-                    EvKey (KChar 'a') [MCtrl] -> Z.gotoBOL
-                    EvKey (KChar 'e') [MCtrl] -> Z.gotoEOL
-                    EvKey (KChar 'd') [MCtrl] -> Z.deleteChar
-                    EvKey (KChar 'k') [MCtrl] -> Z.killToEOL
-                    EvKey (KChar 'u') [MCtrl] -> Z.killToBOL
-                    EvKey KEnter [] -> Z.breakLine
-                    EvKey KDel [] -> Z.deleteChar
-                    EvKey (KChar c) [] | c /= '\t' -> Z.insertChar c
-                    EvKey KUp [] -> Z.moveUp
-                    EvKey KDown [] -> Z.moveDown
-                    EvKey KLeft [] -> Z.moveLeft
-                    EvKey KRight [] -> Z.moveRight
-                    EvKey KBS [] -> Z.deletePrevChar
-                    _ -> id
-            ch = case e of
-                    EvKey (KChar c) [] | c /= '\t' -> c
-                    _ -> ' '
-        in do
-            -- test with:
-            -- stack exec editor 2> stderr.log
-            liftIO $ hPutStrLn stderr [ch]
-            return $ applyEdit f ed
+    let f = case e of
+                EvKey (KChar 'a') [MCtrl] -> Z.gotoBOL
+                EvKey (KChar 'e') [MCtrl] -> Z.gotoEOL
+                EvKey (KChar 'd') [MCtrl] -> Z.deleteChar
+                EvKey (KChar 'k') [MCtrl] -> Z.killToEOL
+                EvKey (KChar 'u') [MCtrl] -> Z.killToBOL
+                EvKey KEnter [] -> Z.breakLine
+                EvKey KDel [] -> Z.deleteChar
+                EvKey (KChar c) [] | c /= '\t' -> Z.insertChar c
+                EvKey KUp [] -> Z.moveUp
+                EvKey KDown [] -> Z.moveDown
+                EvKey KLeft [] -> Z.moveLeft
+                EvKey KRight [] -> Z.moveRight
+                EvKey KBS [] -> Z.deletePrevChar
+                _ -> id
+    in do
+        let ed' = applyEdit f ed
+        (newTree, newSpanInfos) <- liftIO $ do
+            (str, len) <- newCStringLen $ T.unpack $ T.unlines $ Z.getText (editContents ed)
+            withForeignPtr (fromJust $ fgnPtrCursor ed) $ \cur -> do
+                tree      <- hts_parser_parse_string str (fromIntegral len)
+                ts_cursor_reset_root tree cur
+                spanInfos <- tsTransformSpanInfos cur
+                hPrint stderr (reverse spanInfos)
+                return (tree, spanInfos)
+        return ed' { tree = Just newTree, spanInfos = Just newSpanInfos }
 
 -- | Construct an editor over 'Text' values
 editorText :: n
@@ -138,6 +158,9 @@ editorText :: n
        -- means no limit)
        -> T.Text
        -- ^ The initial content
+       -> Maybe (Ptr Tree)
+       -> Maybe (ForeignPtr Cursor)
+       -> Maybe [SpanInfo]
        -> Editor T.Text n
 editorText = editor
 
@@ -150,6 +173,9 @@ editor :: Z.GenericTextZipper a
        -- means no limit)
        -> a
        -- ^ The initial content
+       -> Maybe (Ptr Tree)
+       -> Maybe (ForeignPtr Cursor)
+       -> Maybe [SpanInfo]
        -> Editor a n
 editor name limit s = Editor (Z.textZipper (Z.lines s) limit) name
 
@@ -179,13 +205,13 @@ getEditContents e = Z.getText $ e^.editContentsL
 -- | Turn an editor state value into a widget. This uses the editor's
 -- name for its scrollable viewport handle and the name is also used to
 -- report mouse events.
-renderEditor :: (Ord n, Show n, Monoid t, TextWidth t, Z.GenericTextZipper t)
-             => ([t] -> Widget n)
+renderEditor :: (Ord n, Show n)
+             => ([T.Text] -> Widget n)
              -- ^ The content drawing function
              -> Bool
              -- ^ Whether the editor has focus. It will report a cursor
              -- position if and only if it has focus.
-             -> Editor t n
+             -> Editor T.Text n
              -- ^ The editor.
              -> Widget n
 renderEditor draw foc e =
