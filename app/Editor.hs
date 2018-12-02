@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TemplateHaskell #-}
+
 module Main where
 
 import           Control.Applicative            ( (<$>) )
@@ -7,6 +8,7 @@ import           Lens.Micro                     ( (^.)
                                                 , (&)
                                                 , (.~)
                                                 , (%~)
+                                                , (?~)
                                                 )
 import           Lens.Micro.TH                  ( makeLenses )
 import           Control.Monad                  ( void )
@@ -27,6 +29,28 @@ import           Brick.Widgets.Core
 import           Data.Text.Zipper               ( moveCursor )
 import           Data.Tuple                     ( swap )
 
+import           TreeSitter.CursorApi.Cursor
+
+import           TreeSitter.Parser
+import           TreeSitter.Tree
+import           TreeSitter.Language
+import           TreeSitter.Haskell
+import           TreeSitter.Node
+import           TreeSitter.TsInputEdit
+import           TreeSitter.TsPoint
+
+import           Foreign.ForeignPtr
+import           Foreign.C
+import           Foreign.C.String
+import           Foreign.C.Types
+import           Foreign.Ptr                    ( Ptr(..)
+                                                , nullPtr
+                                                )
+import Control.Monad.IO.Class (liftIO)
+import System.IO
+import Data.Maybe
+
+
 data Name = Prose | TextBox
           deriving (Show, Ord, Eq)
 
@@ -35,6 +59,8 @@ data St =
        , _lastReportedClick :: Maybe (Name, T.Location)
        , _prose :: String
        , _edit :: E.Editor String Name
+       , _tree :: Maybe (Ptr Tree)
+       , _fgnPtrCursor :: Maybe (ForeignPtr Cursor)
        }
 
 makeLenses ''St
@@ -72,9 +98,23 @@ appEvent st (T.VtyEvent (V.EvKey V.KUp [V.MCtrl])) =
   M.vScrollBy (M.viewportScroll Prose) (-1) >> M.continue st
 appEvent st (T.VtyEvent (V.EvKey V.KDown [V.MCtrl])) =
   M.vScrollBy (M.viewportScroll Prose) 1 >> M.continue st
-appEvent st (T.VtyEvent (V.EvKey V.KEsc [])) = M.halt st
-appEvent st (T.VtyEvent ev) =
-  M.continue =<< T.handleEventLensed st edit E.handleEditorEvent ev
+
+appEvent st (T.VtyEvent (V.EvKey V.KEsc [])) = 
+  -- TODO funptr_ts_cursor_free fgnPtrCursor
+  M.halt st
+
+appEvent st (T.VtyEvent ev) = do
+  st' <- T.handleEventLensed st edit E.handleEditorEvent ev
+  newTree <- liftIO $ do
+    (str, len) <- newCStringLen $ unlines $ E.getEditContents (_edit st)
+    withForeignPtr (fromJust $ st ^. fgnPtrCursor) $ \cur -> do
+      tree      <- hts_parser_parse_string str (fromIntegral len)
+      ts_cursor_reset_root tree cur
+      spanInfos <- tsTransformSpanInfos cur
+      hPrint stderr (reverse spanInfos)
+      return tree
+  M.continue (st' & (tree ?~ newTree))
+
 appEvent st _ = M.continue st
 
 aMap :: AttrMap
@@ -83,11 +123,23 @@ aMap = attrMap V.defAttr [(E.editFocusedAttr, V.black `on` V.yellow)]
 app :: M.App St e Name
 app = M.App
   { M.appDraw         = drawUi
-  , M.appStartEvent   = return
+  , M.appStartEvent   = initEvent
   , M.appHandleEvent  = appEvent
   , M.appAttrMap      = const aMap
   , M.appChooseCursor = M.showFirstCursor
   }
+
+initEvent :: St -> T.EventM Name St
+initEvent st = do
+  (fpc, initialTree) <- liftIO $ do
+    (str, len) <- newCStringLen $ unlines $ E.getEditContents (_edit st)
+    tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
+    fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
+    -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
+    withForeignPtr fgnPtrCursor $ \cur -> do
+      ts_cursor_init tree cur
+    return (fgnPtrCursor, tree)
+  return $ st & (tree ?~ initialTree) & (fgnPtrCursor ?~ fpc)
 
 main :: IO ()
 main = do
@@ -119,4 +171,6 @@ main = do
            \sunt in culpa qui officia deserunt mollit\n\
            \anim id est laborum.\n"
     (E.editor TextBox Nothing "")
+    Nothing
+    Nothing
 
