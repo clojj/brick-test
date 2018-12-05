@@ -92,9 +92,11 @@ data Editor t n =
            -- ^ The contents of the editor
            , editorName :: n
            -- ^ The name of the editor
+
+           -- TODO get rid these Maybe's
            , tree :: Maybe (Ptr Tree)
            , fgnPtrCursor :: Maybe (ForeignPtr Cursor)
-           , spanInfos :: Maybe [SpanInfo]
+           , widgets :: Maybe [Widget n]
            }
 
 suffixLenses ''Editor
@@ -109,6 +111,54 @@ instance (Show t, Show n) => Show (Editor t n) where
 
 instance Named (Editor t n) n where
     getName = editorName
+
+
+tsTransformWidgets :: T.Text -> PtrCursor -> IO (Int, (T.Text, [Widget n]))
+tsTransformWidgets text = tsTransform (curopsWidget text)
+
+curopsWidget :: T.Text -> CursorOperations PtrCursor IO (Int, (T.Text, [Widget n]))
+curopsWidget text = CursorOperations
+            { initResult     = initWidget text 0
+            , packNode       = packNodeWidget
+            , nodeFirstChild = firstChild
+            , nodeNext       = next
+            , nodeParent     = parent
+            }
+
+initWidget :: T.Text -> Int -> PtrCursor -> IO (Int, (T.Text, [Widget n]))
+initWidget text pos ptrCur = do
+    (pos', widgets) <- spanInfoAdvance text pos ptrCur
+    return (pos', (text, widgets))
+
+packNodeWidget :: PtrCursor -> Navigation -> (Int, (T.Text, [Widget n])) -> IO (Int, (T.Text, [Widget n]))
+packNodeWidget ptrCur nav (pos, (text, widgets)) = 
+  case nav of
+      TreeSitter.CursorApi.Cursor.Down -> do
+        (pos', widgets') <- spanInfoAdvance text pos ptrCur
+        return (pos', (text, widgets ++ widgets'))
+
+      TreeSitter.CursorApi.Cursor.Next -> do
+        (pos', widgets') <- spanInfoAdvance text pos ptrCur
+        return (pos', (text, widgets ++ widgets'))
+
+      TreeSitter.CursorApi.Cursor.Up -> return (pos, (text, widgets))
+
+spanInfoAdvance :: T.Text -> Int -> PtrCursor -> IO (Int, [Widget n])
+spanInfoAdvance text pos ptrCur = do
+  spanInfo <- spanInfoFromCursor ptrCur
+  case spanInfo of
+    Parent _ _ _ -> return (pos, [])
+    Token _ _ _ -> advance spanInfo
+    Error _ _ -> advance spanInfo
+  
+    where advance spanInfo = let (start, end)  = spanInfoRange spanInfo
+                                 text'         = T.drop pos text
+                                 d             = start - pos
+                                 dn            = end - start
+                                 widgetNode    = txt (T.take dn (T.drop d text'))
+                                 widgets       = if d > 0 then [txt (T.take d text'), widgetNode] else [widgetNode]
+                             in return (end, widgets)
+
 
 initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
 initEvent ed = do
@@ -140,15 +190,16 @@ handleEditorEvent e ed =
                 _ -> id
     in do
         let ed' = applyEdit f ed
-        (newTree, newSpanInfos) <- liftIO $ do
-            (str, len) <- newCStringLen $ T.unpack $ T.unlines $ Z.getText (editContents ed)
+        (newTree, newWidgets) <- liftIO $ do
+            let text = T.unlines $ Z.getText (editContents ed)
+            (str, len) <- newCStringLen $ T.unpack text
             withForeignPtr (fromJust $ fgnPtrCursor ed) $ \cur -> do
                 tree      <- hts_parser_parse_string str (fromIntegral len)
                 ts_cursor_reset_root tree cur
-                spanInfos <- tsTransformSpanInfos cur
-                hPrint stderr (reverse spanInfos)
-                return (tree, spanInfos)
-        return ed' { tree = Just newTree, spanInfos = Just newSpanInfos }
+                (_, (_, widgets)) <- tsTransformWidgets text cur
+                return (tree, widgets)
+        -- liftIO $ hPrint stderr (length newWidgets)
+        return ed' { tree = Just newTree, widgets = Just newWidgets }
 
 -- | Construct an editor over 'Text' values
 editorText :: n
@@ -160,7 +211,7 @@ editorText :: n
        -- ^ The initial content
        -> Maybe (Ptr Tree)
        -> Maybe (ForeignPtr Cursor)
-       -> Maybe [SpanInfo]
+       -> Maybe [Widget n]
        -> Editor T.Text n
 editorText = editor
 
@@ -175,7 +226,7 @@ editor :: Z.GenericTextZipper a
        -- ^ The initial content
        -> Maybe (Ptr Tree)
        -> Maybe (ForeignPtr Cursor)
-       -> Maybe [SpanInfo]
+       -> Maybe [Widget n]
        -> Editor a n
 editor name limit s = Editor (Z.textZipper (Z.lines s) limit) name
 
@@ -229,8 +280,11 @@ renderEditor draw foc e =
        viewport (e^.editorNameL) Both $
        (if foc then showCursor (e^.editorNameL) cursorLoc else id) $
        visibleRegion cursorLoc (atCharWidth, 1) $
-       draw $
-       getEditContents e
+       case widgets e of
+            Nothing -> txt ""
+            Just ws -> vBox ws -- TODO Brick.Markup
+    --    draw $
+    --    getEditContents e
 
 charAtCursor :: (Z.GenericTextZipper t) => Z.TextZipper t -> Maybe t
 charAtCursor z =
