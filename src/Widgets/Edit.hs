@@ -45,6 +45,7 @@ import Data.Monoid
 #endif
 import Lens.Micro
 import Graphics.Vty (Event(..), Key(..), Modifier(..))
+import qualified Graphics.Vty as V
 
 import qualified Data.Text as T
 import qualified Data.Text.Zipper as Z hiding ( textZipper )
@@ -55,7 +56,10 @@ import System.IO
 
 import Brick.Types
 import Brick.Widgets.Core
-import Brick.AttrMap
+import Brick.Util (on, fg, bg)
+import Brick.Markup (markup, (@?), Markup(..))
+import Brick.AttrMap (attrMap, AttrMap, AttrName)
+import Data.Text.Markup ((@@))
 
 import           TreeSitter.CursorApi.Cursor
 import           TreeSitter.CursorApi.Types
@@ -96,7 +100,7 @@ data Editor t n =
            -- TODO get rid these Maybe's
            , tree :: Maybe (Ptr Tree)
            , fgnPtrCursor :: Maybe (ForeignPtr Cursor)
-           , widgets :: Maybe [Widget n]
+           , mup :: Maybe (Markup V.Attr)
            }
 
 suffixLenses ''Editor
@@ -113,10 +117,10 @@ instance Named (Editor t n) n where
     getName = editorName
 
 
-tsTransformWidgets :: T.Text -> PtrCursor -> IO (Int, (T.Text, [Widget n]))
-tsTransformWidgets text = tsTransform (curopsWidget text)
+tsTransformMarkup :: T.Text -> PtrCursor -> IO (Int, (T.Text, Markup V.Attr))
+tsTransformMarkup text = tsTransform (curopsWidget text)
 
-curopsWidget :: T.Text -> CursorOperations PtrCursor IO (Int, (T.Text, [Widget n]))
+curopsWidget :: T.Text -> CursorOperations PtrCursor IO (Int, (T.Text, Markup V.Attr))
 curopsWidget text = CursorOperations
             { initResult     = initWidget text 0
             , packNode       = packNodeWidget
@@ -125,39 +129,56 @@ curopsWidget text = CursorOperations
             , nodeParent     = parent
             }
 
-initWidget :: T.Text -> Int -> PtrCursor -> IO (Int, (T.Text, [Widget n]))
+initWidget :: T.Text -> Int -> PtrCursor -> IO (Int, (T.Text, Markup V.Attr))
 initWidget text pos ptrCur = do
-    (pos', widgets) <- spanInfoAdvance text pos ptrCur
-    return (pos', (text, widgets))
+    (pos', mup) <- spanInfoAdvance text pos ptrCur mempty
+    return (pos', (text, mup))
 
-packNodeWidget :: PtrCursor -> Navigation -> (Int, (T.Text, [Widget n])) -> IO (Int, (T.Text, [Widget n]))
-packNodeWidget ptrCur nav (pos, (text, widgets)) = 
+packNodeWidget :: PtrCursor -> Navigation -> (Int, (T.Text, Markup V.Attr)) -> IO (Int, (T.Text, Markup V.Attr))
+packNodeWidget ptrCur nav (pos, (text, mup)) = 
   case nav of
       TreeSitter.CursorApi.Cursor.Down -> do
-        (pos', widgets') <- spanInfoAdvance text pos ptrCur
-        return (pos', (text, widgets ++ widgets'))
+        (pos', mup') <- spanInfoAdvance text pos ptrCur mup
+        return (pos', (text, mup'))
 
       TreeSitter.CursorApi.Cursor.Next -> do
-        (pos', widgets') <- spanInfoAdvance text pos ptrCur
-        return (pos', (text, widgets ++ widgets'))
+        (pos', mup') <- spanInfoAdvance text pos ptrCur mup
+        return (pos', (text, mup'))
 
-      TreeSitter.CursorApi.Cursor.Up -> return (pos, (text, widgets))
+      TreeSitter.CursorApi.Cursor.Up -> return (pos, (text, mup))
 
-spanInfoAdvance :: T.Text -> Int -> PtrCursor -> IO (Int, [Widget n])
-spanInfoAdvance text pos ptrCur = do
+spanInfoAdvance :: T.Text -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Markup V.Attr)
+spanInfoAdvance text pos ptrCur mup = do
   spanInfo <- spanInfoFromCursor ptrCur
   case spanInfo of
-    Parent _ _ _ -> return (pos, [])
-    Token _ _ _ -> advance spanInfo
-    Error _ _ -> advance spanInfo
+    Parent _ _ _ -> return (pos, mup)
+    Token _ _ _ -> do
+        hPrint stderr spanInfo
+        advance spanInfo
+    Error _ _ -> do
+        hPrint stderr spanInfo
+        return (pos, mup) -- TODO ?
   
     where advance spanInfo = let (start, end)  = spanInfoRange spanInfo
+                                 (start', end') = if start == 1 && end == 1 then (0, 1) else (start, end) -- TODO
                                  text'         = T.drop pos text
-                                 d             = start - pos
-                                 dn            = end - start
-                                 widgetNode    = txt (T.take dn (T.drop d text'))
-                                 widgets       = if d > 0 then [txt (T.take d text'), widgetNode] else [widgetNode]
-                             in return (end, widgets)
+                                 d             = start' - pos
+                                 dn            = end' - start'
+                                 textBefore    = T.take d text'
+                                 nodeTxt       = T.take dn (T.drop d text')
+
+                                 markupNode    = nodeTxt @@ fg V.blue
+                                 markupText    = textBefore @@ bg V.green
+                                 mup'          = mup <> markupText <> markupNode
+                             in do
+                                    -- hPrint stderr $ "t: " <> textBefore
+                                    -- hPrint stderr $ "n: " <> nodeTxt
+                                    -- hPrint stderr pos
+                                    -- hPrint stderr text'
+                                    -- hPrint stderr d
+                                    -- hPrint stderr dn
+                                    -- hPrint stderr nodeTxt
+                                    return (end', mup')
 
 
 initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
@@ -190,16 +211,16 @@ handleEditorEvent e ed =
                 _ -> id
     in do
         let ed' = applyEdit f ed
-        (newTree, newWidgets) <- liftIO $ do
-            let text = T.unlines $ Z.getText (editContents ed)
+        (newTree, newMarkup) <- liftIO $ do
+            let text = T.unlines $ Z.getText (editContents ed')
             (str, len) <- newCStringLen $ T.unpack text
-            withForeignPtr (fromJust $ fgnPtrCursor ed) $ \cur -> do
+            withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
                 tree      <- hts_parser_parse_string str (fromIntegral len)
                 ts_cursor_reset_root tree cur
-                (_, (_, widgets)) <- tsTransformWidgets text cur
-                return (tree, widgets)
-        -- liftIO $ hPrint stderr (length newWidgets)
-        return ed' { tree = Just newTree, widgets = Just newWidgets }
+                (_, (_, markup)) <- tsTransformMarkup text cur
+                return (tree, markup)
+        -- liftIO $ hPrint stderr newMarkup
+        return ed' { tree = Just newTree, mup = Just newMarkup }
 
 -- | Construct an editor over 'Text' values
 editorText :: n
@@ -211,7 +232,7 @@ editorText :: n
        -- ^ The initial content
        -> Maybe (Ptr Tree)
        -> Maybe (ForeignPtr Cursor)
-       -> Maybe [Widget n]
+       -> Maybe (Markup V.Attr)
        -> Editor T.Text n
 editorText = editor
 
@@ -226,7 +247,7 @@ editor :: Z.GenericTextZipper a
        -- ^ The initial content
        -> Maybe (Ptr Tree)
        -> Maybe (ForeignPtr Cursor)
-       -> Maybe [Widget n]
+       -> Maybe (Markup V.Attr)
        -> Editor a n
 editor name limit s = Editor (Z.textZipper (Z.lines s) limit) name
 
@@ -265,7 +286,7 @@ renderEditor :: (Ord n, Show n)
              -> Editor T.Text n
              -- ^ The editor.
              -> Widget n
-renderEditor draw foc e =
+renderEditor draw foc e = -- TODO remove draw
     let cp = Z.cursorPosition z
         z = e^.editContentsL
         toLeft = Z.take (cp^._2) (Z.currentLine z)
@@ -280,11 +301,14 @@ renderEditor draw foc e =
        viewport (e^.editorNameL) Both $
        (if foc then showCursor (e^.editorNameL) cursorLoc else id) $
        visibleRegion cursorLoc (atCharWidth, 1) $
-       case widgets e of
+       case mup e of
             Nothing -> txt ""
-            Just ws -> vBox ws -- TODO Brick.Markup
-    --    draw $
-    --    getEditContents e
+            -- Just ws -> hBox ws
+            Just m -> 
+                case show m of -- TODO
+                    "Markup []" -> txt $ T.unlines $ getEditContents e 
+                    _ -> markup m
+       
 
 charAtCursor :: (Z.GenericTextZipper t) => Z.TextZipper t -> Maybe t
 charAtCursor z =
