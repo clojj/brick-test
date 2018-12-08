@@ -59,7 +59,7 @@ import Brick.Widgets.Core
 import Brick.Util (on, fg, bg)
 import Brick.Markup (markup, (@?), Markup(..))
 import Brick.AttrMap (attrMap, AttrMap, AttrName)
-import Data.Text.Markup ((@@))
+import Data.Text.Markup ((@@), fromText)
 
 import           TreeSitter.CursorApi.Cursor
 import           TreeSitter.CursorApi.Types
@@ -150,35 +150,27 @@ packNodeWidget ptrCur nav (pos, (text, mup)) =
 spanInfoAdvance :: T.Text -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Markup V.Attr)
 spanInfoAdvance text pos ptrCur mup = do
   spanInfo <- spanInfoFromCursor ptrCur
+--   hPrint stderr pos
+--   hPrint stderr spanInfo
   case spanInfo of
-    Parent _ _ _ -> return (pos, mup)
-    Token _ _ _ -> do
-        hPrint stderr spanInfo
-        advance spanInfo
-    Error _ _ -> do
-        hPrint stderr spanInfo
-        return (pos, mup) -- TODO ?
-  
-    where advance spanInfo = let (start, end)  = spanInfoRange spanInfo
-                                 (start', end') = if start == 1 && end == 1 then (0, 1) else (start, end) -- TODO
-                                 text'         = T.drop pos text
-                                 d             = start' - pos
-                                 dn            = end' - start'
-                                 textBefore    = T.take d text'
-                                 nodeTxt       = T.take dn (T.drop d text')
+        Parent start end _ -> return (pos, mup)
+        Token start end _  -> advance spanInfo start end
+        Error start end    -> return (pos, mup)
 
-                                 markupNode    = nodeTxt @@ fg V.blue
-                                 markupText    = textBefore @@ bg V.green
-                                 mup'          = mup <> markupText <> markupNode
-                             in do
-                                    -- hPrint stderr $ "t: " <> textBefore
-                                    -- hPrint stderr $ "n: " <> nodeTxt
-                                    -- hPrint stderr pos
-                                    -- hPrint stderr text'
-                                    -- hPrint stderr d
-                                    -- hPrint stderr dn
-                                    -- hPrint stderr nodeTxt
-                                    return (end', mup')
+    where advance spanInfo start end = 
+            let (start', end') = if start == 1 && end == 1 then (0, 1) else (start, end) -- TODO
+                text'         = T.drop pos text
+                d             = start' - pos
+                dn            = end' - start'
+
+                textBefore    = T.take d text'
+                markupText    = textBefore @@ bg V.green
+
+                nodeTxt       = T.take dn (T.drop d text')
+                markupNode    = nodeTxt @@ fg V.blue
+
+                mup'          = mup <> markupText <> markupNode
+            in return (end', mup')
 
 
 initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
@@ -213,12 +205,13 @@ handleEditorEvent e ed =
         let ed' = applyEdit f ed
         (newTree, newMarkup) <- liftIO $ do
             let text = T.unlines $ Z.getText (editContents ed')
-            (str, len) <- newCStringLen $ T.unpack text
+            (str, len) <- newCStringLen $ T.unpack text -- TODO Text to String...?
             withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
-                tree      <- hts_parser_parse_string str (fromIntegral len)
+                tree               <- hts_parser_parse_string str (fromIntegral len)
                 ts_cursor_reset_root tree cur
-                (_, (_, markup)) <- tsTransformMarkup text cur
-                return (tree, markup)
+                (pos, (_, markup)) <- tsTransformMarkup text cur
+                let markupTail = if pos < T.length text then fromText (T.drop pos text) else mempty
+                return (tree, markup <> markupTail)
         -- liftIO $ hPrint stderr newMarkup
         return ed' { tree = Just newTree, mup = Just newMarkup }
 
