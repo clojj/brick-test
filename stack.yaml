@@ -34,6 +34,8 @@ resolver: lts-12.20
 #  - wai
 packages:
 - .
+- location: brick
+  extra-dep: true
 - location: haskell-tree-sitter
   extra-dep: true
 - location: haskell-tree-sitter/languages/common
@@ -43,7 +45,8 @@ packages:
 # Dependency packages to be pulled from upstream that are not in the resolver
 # using the same syntax as the packages field.
 # (e.g., acme-missiles-0.3)
-# extra-deps: []
+extra-deps:
+- vty-5.25.1@sha256:45ecd481dc319d68cf5969fc2ff18b22b8ae03f7534d94bd4bc8ad3dfe94fc3b
 
 # Override default flag values for local packages and extra-deps
 # flags: {}

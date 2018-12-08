@@ -212,7 +212,7 @@ handleEditorEvent e ed =
                 (pos, (_, markup)) <- tsTransformMarkup text cur
                 let markupTail = if pos < T.length text then fromText (T.drop pos text) else mempty
                 return (tree, markup <> markupTail)
-        liftIO $ hPrint stderr $ markupToList newMarkup
+        -- liftIO $ hPrint stderr $ markupToList newMarkup
         return ed' { tree = Just newTree, mup = Just newMarkup }
 
 -- | Construct an editor over 'Text' values
