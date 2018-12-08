@@ -59,7 +59,7 @@ import Brick.Widgets.Core
 import Brick.Util (on, fg, bg)
 import Brick.Markup (markup, (@?), Markup(..))
 import Brick.AttrMap (attrMap, AttrMap, AttrName)
-import Data.Text.Markup ((@@), fromText)
+import Data.Text.Markup ((@@), fromText, markupToList)
 
 import           TreeSitter.CursorApi.Cursor
 import           TreeSitter.CursorApi.Types
@@ -157,7 +157,7 @@ spanInfoAdvance text pos ptrCur mup = do
         Token start end _  -> advance spanInfo start end
         Error start end    -> return (pos, mup)
 
-    where advance spanInfo start end = 
+  where advance spanInfo start end = 
             let (start', end') = if start == 1 && end == 1 then (0, 1) else (start, end) -- TODO
                 text'         = T.drop pos text
                 d             = start' - pos
@@ -212,7 +212,7 @@ handleEditorEvent e ed =
                 (pos, (_, markup)) <- tsTransformMarkup text cur
                 let markupTail = if pos < T.length text then fromText (T.drop pos text) else mempty
                 return (tree, markup <> markupTail)
-        -- liftIO $ hPrint stderr newMarkup
+        liftIO $ hPrint stderr $ markupToList newMarkup
         return ed' { tree = Just newTree, mup = Just newMarkup }
 
 -- | Construct an editor over 'Text' values
@@ -294,6 +294,7 @@ renderEditor draw foc e = -- TODO remove draw
        viewport (e^.editorNameL) Both $
        (if foc then showCursor (e^.editorNameL) cursorLoc else id) $
        visibleRegion cursorLoc (atCharWidth, 1) $
+    --    txt $ T.unlines $ Z.getText z
        case mup e of
             Nothing -> txt ""
             -- Just ws -> hBox ws
