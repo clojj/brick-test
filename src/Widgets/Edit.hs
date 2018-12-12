@@ -47,6 +47,8 @@ import Lens.Micro
 import Graphics.Vty (Event(..), Key(..), Modifier(..))
 import qualified Graphics.Vty as V
 
+import qualified Data.ByteString.Unsafe as BSU
+import qualified Data.Text.Encoding as DTE
 import qualified Data.Text as T
 import qualified Data.Text.Zipper as Z hiding ( textZipper )
 import qualified Data.Text.Zipper.Generic as Z
@@ -151,7 +153,7 @@ spanInfoAdvance :: T.Text -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Marku
 spanInfoAdvance text pos ptrCur mup = do
   spanInfo <- spanInfoFromCursor ptrCur
 --   hPrint stderr pos
---   hPrint stderr spanInfo
+  hPrint stderr spanInfo
   case spanInfo of
         Parent start end _ -> return (pos, mup)
         Token start end _  -> advance spanInfo start end
@@ -205,13 +207,28 @@ handleEditorEvent e ed =
         let ed' = applyEdit f ed
         (newTree, newMarkup) <- liftIO $ do
             let text = T.unlines $ Z.getText (editContents ed')
-            (str, len) <- newCStringLen $ T.unpack text -- TODO Text to String...?
-            withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
-                tree               <- hts_parser_parse_string str (fromIntegral len)
-                ts_cursor_reset_root tree cur
-                (pos, (_, markup)) <- tsTransformMarkup text cur
-                let markupTail = if pos < T.length text then fromText (T.drop pos text) else mempty
-                return (tree, markup <> markupTail)
+
+            -- TODO
+            BSU.unsafeUseAsCStringLen (DTE.encodeUtf8 text) $ \ (str, len) -> 
+
+            -- TODO
+            -- let acquire = ts_parser_parse_string parser nullPtr bytes len
+                -- release t
+                --     | t == nullPtr = pure ()
+                --     | otherwise = ts_tree_delete t
+            -- bracket acquire release (\ treePtr -> …)
+
+            -- (str, len) <- newCStringLen $ T.unpack text -- TODO remove ?
+
+                withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
+                    tree               <- hts_parser_parse_string str (fromIntegral len)
+                    ts_cursor_reset_root tree cur
+                    hPrint stderr "--- start tree ------------------"
+                    (pos, (_, markup)) <- tsTransformMarkup text cur
+                    hPrint stderr "--- end tree ------------------"
+                    let markupTail = if pos < T.length text then fromText (T.drop pos text) else mempty
+                    return (tree, markup <> markupTail)
+
         -- liftIO $ hPrint stderr $ markupToList newMarkup
         return ed' { tree = Just newTree, mup = Just newMarkup }
 
