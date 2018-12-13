@@ -180,7 +180,6 @@ initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
 initEvent ed = do
   (fpc, initialTree) <- liftIO $ 
     BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE (T.unlines $ Z.getText (editContents ed))) $ \ (str, len) -> do
-        -- (str, len) <- newCStringLen $ T.unpack $ T.unlines $ Z.getText (editContents ed)
         tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
         fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
         -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
@@ -210,17 +209,7 @@ handleEditorEvent e ed =
         (newTree, newMarkup) <- liftIO $ do
             let text = T.unlines $ Z.getText (editContents ed')
 
-            -- TODO
             BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE text) $ \ (str, len) -> 
-
-            -- TODO
-            -- let acquire = ts_parser_parse_string parser nullPtr bytes len
-                -- release t
-                --     | t == nullPtr = pure ()
-                --     | otherwise = ts_tree_delete t
-            -- bracket acquire release (\ treePtr -> …)
-
-            -- (str, len) <- newCStringLen $ T.unpack text -- TODO remove ?
 
                 withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
                     tree               <- hts_parser_parse_string str (fromIntegral len)
@@ -313,13 +302,11 @@ renderEditor draw foc e = -- TODO remove draw
        viewport (e^.editorNameL) Both $
        (if foc then showCursor (e^.editorNameL) cursorLoc else id) $
        visibleRegion cursorLoc (atCharWidth, 1) $
-    --    txt $ T.unlines $ Z.getText z
        case mup e of
             Nothing -> txt ""
-            -- Just ws -> hBox ws
-            Just m -> 
-                case show m of -- TODO
-                    "Markup []" -> txt $ T.unlines $ getEditContents e 
+            Just m ->
+                case show m of -- TODO case empty m
+                    "Markup []" -> txt $ T.unlines $ getEditContents e
                     _ -> markup m
        
 
