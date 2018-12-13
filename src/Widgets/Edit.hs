@@ -178,12 +178,13 @@ spanInfoAdvance text pos ptrCur mup = do
 initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
 initEvent ed = do
   (fpc, initialTree) <- liftIO $ do
-    (str, len) <- newCStringLen $ T.unpack $ T.unlines $ Z.getText (editContents ed)
-    tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
-    fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
-    -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
-    withForeignPtr fgnPtrCursor $ \cur -> ts_cursor_init tree cur
-    return (fgnPtrCursor, tree)
+    BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE (T.unlines $ Z.getText (editContents ed))) $ \ (str, len) -> do
+        -- (str, len) <- newCStringLen $ T.unpack $ T.unlines $ Z.getText (editContents ed)
+        tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
+        fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
+        -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
+        withForeignPtr fgnPtrCursor $ \cur -> ts_cursor_init tree cur
+        return (fgnPtrCursor, tree)
   return $ ed { tree = Just initialTree, fgnPtrCursor = Just fpc }
 
 handleEditorEvent :: Event -> Editor T.Text n -> EventM n (Editor T.Text n)
@@ -209,7 +210,7 @@ handleEditorEvent e ed =
             let text = T.unlines $ Z.getText (editContents ed')
 
             -- TODO
-            BSU.unsafeUseAsCStringLen (DTE.encodeUtf8 text) $ \ (str, len) -> 
+            BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE text) $ \ (str, len) -> 
 
             -- TODO
             -- let acquire = ts_parser_parse_string parser nullPtr bytes len
