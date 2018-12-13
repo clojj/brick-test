@@ -155,11 +155,12 @@ spanInfoAdvance text pos ptrCur mup = do
 --   hPrint stderr pos
   hPrint stderr spanInfo
   case spanInfo of
-        Parent start end _ -> return (pos, mup)
-        Token start end _  -> advance spanInfo start end
-        Error start end    -> return (pos, mup)
+        Token _ _ _  -> advanceToken spanInfo
+        _            -> return (pos, mup)
+        -- TODO produce Error markdown-style
+        -- Error start end    -> return (pos, mup)
 
-  where advance spanInfo start end = 
+  where advanceToken (Token start end _) = 
             let (start', end') = if start == 1 && end == 1 then (0, 1) else (start, end) -- TODO
                 text'         = T.drop pos text
                 d             = start' - pos
@@ -177,7 +178,7 @@ spanInfoAdvance text pos ptrCur mup = do
 
 initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
 initEvent ed = do
-  (fpc, initialTree) <- liftIO $ do
+  (fpc, initialTree) <- liftIO $ 
     BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE (T.unlines $ Z.getText (editContents ed))) $ \ (str, len) -> do
         -- (str, len) <- newCStringLen $ T.unpack $ T.unlines $ Z.getText (editContents ed)
         tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
