@@ -61,7 +61,7 @@ import Brick.Widgets.Core
 import Brick.Util (on, fg, bg)
 import Brick.Markup (markup, (@?), Markup(..))
 import Brick.AttrMap (attrMap, AttrMap, AttrName)
-import Data.Text.Markup ((@@), fromText, markupToList)
+import Data.Text.Markup ((@@), fromText, markupToList, isEmpty)
 
 import           TreeSitter.CursorApi.Cursor
 import           TreeSitter.CursorApi.Types
@@ -147,7 +147,12 @@ packNodeWidget ptrCur nav (pos, (text, mup)) =
         (pos', mup') <- spanInfoAdvance text pos ptrCur mup
         return (pos', (text, mup'))
 
-      TreeSitter.CursorApi.Cursor.Up -> return (pos, (text, mup))
+      TreeSitter.CursorApi.Cursor.Up -> do
+        p <- hasParent
+        case p of
+            True  -> return (pos, (text, mup))
+            False -> let markupTail = if pos < T.length text then (fromText (T.drop pos text) :: Markup V.Attr) else mempty
+                     in return (pos, (text, mup <> markupTail))
 
 spanInfoAdvance :: T.Text -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Markup V.Attr)
 spanInfoAdvance text pos ptrCur mup = do
@@ -217,8 +222,7 @@ handleEditorEvent e ed =
                     hPrint stderr "--- start tree ------------------"
                     (pos, (_, markup)) <- tsTransformMarkup text cur
                     hPrint stderr "--- end tree ------------------"
-                    let markupTail = if pos < T.length text then fromText (T.drop pos text) else mempty
-                    return (tree, markup <> markupTail)
+                    return (tree, markup)
 
         -- liftIO $ hPrint stderr $ markupToList newMarkup
         return ed' { tree = Just newTree, mup = Just newMarkup }
@@ -305,9 +309,9 @@ renderEditor draw foc e = -- TODO remove draw
        case mup e of
             Nothing -> txt ""
             Just m ->
-                case show m of -- TODO case empty m
-                    "Markup []" -> txt $ T.unlines $ getEditContents e
-                    _ -> markup m
+                if isEmpty m
+                    then txt $ T.unlines $ getEditContents e
+                    else markup m
        
 
 charAtCursor :: (Z.GenericTextZipper t) => Z.TextZipper t -> Maybe t
