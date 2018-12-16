@@ -152,7 +152,9 @@ packNodeWidget ptrCur nav (pos, (text, mup)) =
         case p of
             True  -> return (pos, (text, mup))
             False -> let markupTail = if pos < T.length text then (fromText (T.drop pos text) :: Markup V.Attr) else mempty
-                     in return (pos, (text, mup <> markupTail))
+                     in do
+                        -- liftIO $ hPrint stderr (show (T.drop pos text))
+                        return (pos, (text, mup <> markupTail))
 
 spanInfoAdvance :: T.Text -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Markup V.Attr)
 spanInfoAdvance text pos ptrCur mup = do
@@ -192,40 +194,52 @@ initEvent ed = do
         return (fgnPtrCursor, tree)
   return $ ed { tree = Just initialTree, fgnPtrCursor = Just fpc }
 
+type ZipperFunction a = Z.TextZipper a -> Z.TextZipper a
+
+data EditEvent a = Nav (ZipperFunction a) | Mod (ZipperFunction a)
+
+getEvent :: EditEvent a -> ZipperFunction a
+getEvent ee = case ee of
+    Nav e -> e
+    Mod e -> e
+
 handleEditorEvent :: Event -> Editor T.Text n -> EventM n (Editor T.Text n)
 handleEditorEvent e ed =
     let f = case e of
-                EvKey (KChar 'a') [MCtrl] -> Z.gotoBOL
-                EvKey (KChar 'e') [MCtrl] -> Z.gotoEOL
-                EvKey (KChar 'd') [MCtrl] -> Z.deleteChar
-                EvKey (KChar 'k') [MCtrl] -> Z.killToEOL
-                EvKey (KChar 'u') [MCtrl] -> Z.killToBOL
-                EvKey KEnter [] -> Z.breakLine
-                EvKey KDel [] -> Z.deleteChar
-                EvKey (KChar c) [] | c /= '\t' -> Z.insertChar c
-                EvKey KUp [] -> Z.moveUp
-                EvKey KDown [] -> Z.moveDown
-                EvKey KLeft [] -> Z.moveLeft
-                EvKey KRight [] -> Z.moveRight
-                EvKey KBS [] -> Z.deletePrevChar
-                _ -> id
+                EvKey (KChar 'a') [MCtrl]       -> Nav Z.gotoBOL
+                EvKey (KChar 'e') [MCtrl]       -> Nav Z.gotoEOL
+                EvKey KUp []                    -> Nav Z.moveUp
+                EvKey KDown []                  -> Nav Z.moveDown
+                EvKey KLeft []                  -> Nav Z.moveLeft
+                EvKey KRight []                 -> Nav Z.moveRight
+
+                EvKey (KChar 'd') [MCtrl]       -> Mod Z.deleteChar
+                EvKey (KChar 'k') [MCtrl]       -> Mod Z.killToEOL
+                EvKey (KChar 'u') [MCtrl]       -> Mod Z.killToBOL
+                EvKey KEnter []                 -> Mod Z.breakLine
+                EvKey KDel []                   -> Mod Z.deleteChar
+                EvKey (KChar c) [] | c /= '\t'  -> Mod (Z.insertChar c)
+                EvKey KBS []                    -> Mod Z.deletePrevChar
+
+                _                               -> Nav id
     in do
-        let ed' = applyEdit f ed
-        (newTree, newMarkup) <- liftIO $ do
-            let text = T.unlines $ Z.getText (editContents ed')
-
-            BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE text) $ \ (str, len) -> 
-
-                withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
-                    tree               <- hts_parser_parse_string str (fromIntegral len)
-                    ts_cursor_reset_root tree cur
-                    hPrint stderr "--- start tree ------------------"
-                    (pos, (_, markup)) <- tsTransformMarkup text cur
-                    hPrint stderr "--- end tree ------------------"
-                    return (tree, markup)
-
-        -- liftIO $ hPrint stderr $ markupToList newMarkup
-        return ed' { tree = Just newTree, mup = Just newMarkup }
+        let ed' = applyEdit (getEvent f) ed
+        case f of
+            Nav _ -> return ed'
+            Mod _ -> do
+                        (newTree, newMarkup) <- liftIO $ do
+                            let text = T.unlines $ Z.getText (editContents ed')
+                            liftIO $ hPrint stderr (show text)
+                            BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE text) $ \ (str, len) -> 
+                                withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
+                                    tree               <- hts_parser_parse_string str (fromIntegral len)
+                                    ts_cursor_reset_root tree cur
+                                    hPrint stderr "--- start tree ------------------"
+                                    (pos, (_, markup)) <- tsTransformMarkup text cur
+                                    hPrint stderr "--- end tree ------------------"
+                                    return (tree, markup)
+                        -- liftIO $ hPrint stderr $ markupToList newMarkup
+                        return ed' { tree = Just newTree, mup = Just newMarkup }
 
 -- | Construct an editor over 'Text' values
 editorText :: n
