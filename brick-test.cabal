@@ -38,6 +38,7 @@ library
     , vty
     , text
     , utf8-string
+    , bytestring
     , microlens >= 0.3.0.0
     , microlens-th
     , text-zipper
@@ -60,6 +61,7 @@ executable editor
     , vty
     , text
     , utf8-string
+    , bytestring
     , microlens >= 0.3.0.0
     , microlens-th
     , text-zipper

@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE TemplateHaskell #-}
 
 module Main where
@@ -26,11 +27,14 @@ import qualified Widgets.Edit                  as E
 import qualified Brick.Widgets.Center          as C
 import qualified Brick.Widgets.Border          as B
 import           Brick.Widgets.Core
-import           Data.ByteString.Zipper               ( moveCursor )
+import Data.ByteString.Zipper (moveCursor, unlines')
 import           Data.Tuple                     ( swap )
 
-import qualified Data.ByteString.Char8 as BS
+import qualified Data.ByteString.UTF8 as BS
+import qualified Data.ByteString as B
+import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
+import Data.Text.Markup (fromText)
 
 
 data Name = Prose | TextBox
@@ -50,7 +54,7 @@ drawUi st = [editorLayer st <+> proseLayer st]
 
 editorLayer :: St -> Widget Name
 editorLayer st = C.hCenterLayer
-  (vLimit 20 $ hLimit 80 $ E.renderEditor (txt . TE.decodeUtf8 . BS.unlines) True (st ^. edit))
+  (vLimit 20 $ hLimit 80 $ E.renderEditor (str . BS.toString . unlines') True (st ^. edit))
 
 proseLayer :: St -> Widget Name
 proseLayer st =
@@ -133,5 +137,5 @@ main = do
            \Excepteur sint occaecat cupidatat not proident,\n\
            \sunt in culpa qui officia deserunt mollit\n\
            \anim id est laborum.\n"
-    (E.editorText TextBox Nothing "" Nothing Nothing Nothing)
+    (E.editorText TextBox Nothing "ε" Nothing Nothing (Just $ fromText "ε"))
 
