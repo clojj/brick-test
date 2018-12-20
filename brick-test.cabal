@@ -27,7 +27,7 @@ source-repository head
 
 library
   exposed-modules:
-      Lib, Widgets.Edit
+      Widgets.Edit
   other-modules:
       Paths_brick_test
   hs-source-dirs:
@@ -37,7 +37,7 @@ library
     , brick
     , vty
     , text
-    , bytestring
+    , utf8-string
     , microlens >= 0.3.0.0
     , microlens-th
     , text-zipper
@@ -59,6 +59,7 @@ executable editor
     , brick
     , vty
     , text
+    , utf8-string
     , microlens >= 0.3.0.0
     , microlens-th
     , text-zipper

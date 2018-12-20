@@ -26,10 +26,11 @@ import qualified Widgets.Edit                  as E
 import qualified Brick.Widgets.Center          as C
 import qualified Brick.Widgets.Border          as B
 import           Brick.Widgets.Core
-import           Data.Text.Zipper               ( moveCursor )
+import           Data.ByteString.Zipper               ( moveCursor )
 import           Data.Tuple                     ( swap )
 
-import qualified Data.Text as T
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.Text.Encoding as TE
 
 
 data Name = Prose | TextBox
@@ -39,7 +40,7 @@ data St =
     St { _clicked :: [T.Extent Name]
        , _lastReportedClick :: Maybe (Name, T.Location)
        , _prose :: String
-       , _edit :: E.Editor T.Text Name
+       , _edit :: E.Editor BS.ByteString Name
        }
 
 makeLenses ''St
@@ -49,7 +50,7 @@ drawUi st = [editorLayer st <+> proseLayer st]
 
 editorLayer :: St -> Widget Name
 editorLayer st = C.hCenterLayer
-  (vLimit 20 $ hLimit 80 $ E.renderEditor (txt . T.unlines) True (st ^. edit))
+  (vLimit 20 $ hLimit 80 $ E.renderEditor (txt . TE.decodeUtf8 . BS.unlines) True (st ^. edit))
 
 proseLayer :: St -> Widget Name
 proseLayer st =
@@ -132,5 +133,5 @@ main = do
            \Excepteur sint occaecat cupidatat not proident,\n\
            \sunt in culpa qui officia deserunt mollit\n\
            \anim id est laborum.\n"
-    (E.editor TextBox Nothing "" Nothing Nothing Nothing)
+    (E.editorText TextBox Nothing "" Nothing Nothing Nothing)
 

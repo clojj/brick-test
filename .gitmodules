@@ -4,3 +4,9 @@
 [submodule "brick"]
 	path = brick
 	url = https://github.com/jtdaugherty/brick
+[submodule "text-zipper"]
+	path = text-zipper
+	url = https://github.com/clojj/text-zipper.git
+[submodule "utf8-string"]
+	path = utf8-string
+	url = https://github.com/clojj/utf8-string.git

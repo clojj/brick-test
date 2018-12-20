@@ -22,7 +22,6 @@ module Widgets.Edit
   ( Editor(editContents, editorName)
   , initEvent
   -- * Constructing an editor
-  , editor
   , editorText
   -- * Reading editor contents
   , getEditContents
@@ -48,10 +47,9 @@ import Graphics.Vty (Event(..), Key(..), Modifier(..))
 import qualified Graphics.Vty as V
 
 import qualified Data.ByteString.Unsafe as BSU
-import qualified Data.Text.Encoding as DTE
-import qualified Data.Text as T
-import qualified Data.Text.Zipper as Z hiding ( textZipper )
-import qualified Data.Text.Zipper.Generic as Z
+import qualified Data.ByteString.Zipper as Z
+import qualified Data.ByteString.Char8 as BS
+import qualified Data.Text.Encoding as TE
 
 import Control.Monad.IO.Class (liftIO)
 import System.IO
@@ -94,7 +92,7 @@ import Data.Maybe
 -- * Arrow keys: move cursor
 -- * Enter: break the current line at the cursor position
 data Editor t n =
-    Editor { editContents :: Z.TextZipper t
+    Editor { editContents :: Z.ByteStringZipper t
            -- ^ The contents of the editor
            , editorName :: n
            -- ^ The name of the editor
@@ -119,10 +117,10 @@ instance Named (Editor t n) n where
     getName = editorName
 
 
-tsTransformMarkup :: T.Text -> PtrCursor -> IO (Int, (T.Text, Markup V.Attr))
+tsTransformMarkup :: BS.ByteString -> PtrCursor -> IO (Int, (BS.ByteString, Markup V.Attr))
 tsTransformMarkup text = tsTransform (curopsWidget text)
 
-curopsWidget :: T.Text -> CursorOperations PtrCursor IO (Int, (T.Text, Markup V.Attr))
+curopsWidget :: BS.ByteString -> CursorOperations PtrCursor IO (Int, (BS.ByteString, Markup V.Attr))
 curopsWidget text = CursorOperations
             { initResult     = initWidget text 0
             , packNode       = packNodeWidget
@@ -131,12 +129,12 @@ curopsWidget text = CursorOperations
             , nodeParent     = parent
             }
 
-initWidget :: T.Text -> Int -> PtrCursor -> IO (Int, (T.Text, Markup V.Attr))
+initWidget :: BS.ByteString -> Int -> PtrCursor -> IO (Int, (BS.ByteString, Markup V.Attr))
 initWidget text pos ptrCur = do
     (pos', mup) <- spanInfoAdvance text pos ptrCur mempty
     return (pos', (text, mup))
 
-packNodeWidget :: PtrCursor -> Navigation -> (Int, (T.Text, Markup V.Attr)) -> IO (Int, (T.Text, Markup V.Attr))
+packNodeWidget :: PtrCursor -> Navigation -> (Int, (BS.ByteString, Markup V.Attr)) -> IO (Int, (BS.ByteString, Markup V.Attr))
 packNodeWidget ptrCur nav (pos, (text, mup)) = 
   case nav of
       TreeSitter.CursorApi.Cursor.Down -> do
@@ -151,10 +149,10 @@ packNodeWidget ptrCur nav (pos, (text, mup)) =
         p <- hasParent
         case p of
             True  -> return (pos, (text, mup))
-            False -> let markupTail = if pos < T.length text then (fromText (T.drop pos text) :: Markup V.Attr) else mempty
+            False -> let markupTail = if pos < BS.length text then (fromText (TE.decodeUtf8 $ BS.drop pos text) :: Markup V.Attr) else mempty
                      in return (pos, (text, mup <> markupTail))
 
-spanInfoAdvance :: T.Text -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Markup V.Attr)
+spanInfoAdvance :: BS.ByteString -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Markup V.Attr)
 spanInfoAdvance text pos ptrCur mup = do
   spanInfo <- spanInfoFromCursor ptrCur
 --   hPrint stderr pos
@@ -167,24 +165,24 @@ spanInfoAdvance text pos ptrCur mup = do
 
   where advanceToken (Token start end _) = 
             let (start', end') = if start == 1 && end == 1 then (0, 1) else (start, end) -- TODO
-                text'         = T.drop pos text
+                text'         = BS.drop pos text
                 d             = start' - pos
                 dn            = end' - start'
 
-                textBefore    = T.take d text'
+                textBefore    = TE.decodeUtf8 $ BS.take d text'
                 markupText    = textBefore @@ bg V.green
 
-                nodeTxt       = T.take dn (T.drop d text')
+                nodeTxt       = TE.decodeUtf8 $ BS.take dn (BS.drop d text')
                 markupNode    = nodeTxt @@ fg V.blue
 
                 mup'          = mup <> markupText <> markupNode
             in return (end', mup')
 
 
-initEvent :: Editor T.Text n -> EventM n (Editor T.Text n)
+initEvent :: Editor BS.ByteString n -> EventM n (Editor BS.ByteString n)
 initEvent ed = do
   (fpc, initialTree) <- liftIO $ 
-    BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE (T.unlines $ Z.getText (editContents ed))) $ \ (str, len) -> do
+    BSU.unsafeUseAsCStringLen (BS.unlines $ Z.getText (editContents ed)) $ \ (str, len) -> do
         tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
         fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
         -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
@@ -192,7 +190,7 @@ initEvent ed = do
         return (fgnPtrCursor, tree)
   return $ ed { tree = Just initialTree, fgnPtrCursor = Just fpc }
 
-handleEditorEvent :: Event -> Editor T.Text n -> EventM n (Editor T.Text n)
+handleEditorEvent :: Event -> Editor BS.ByteString n -> EventM n (Editor BS.ByteString n)
 handleEditorEvent e ed =
     let f = case e of
                 EvKey (KChar 'a') [MCtrl] -> Z.gotoBOL
@@ -212,9 +210,9 @@ handleEditorEvent e ed =
     in do
         let ed' = applyEdit f ed
         (newTree, newMarkup) <- liftIO $ do
-            let text = T.unlines $ Z.getText (editContents ed')
+            let text = BS.unlines $ Z.getText (editContents ed')
 
-            BSU.unsafeUseAsCStringLen (DTE.encodeUtf16LE text) $ \ (str, len) -> 
+            BSU.unsafeUseAsCStringLen text $ \ (str, len) -> 
 
                 withForeignPtr (fromJust $ fgnPtrCursor ed') $ \cur -> do
                     tree               <- hts_parser_parse_string str (fromIntegral len)
@@ -233,34 +231,19 @@ editorText :: n
        -> Maybe Int
        -- ^ The limit on the number of lines in the editor ('Nothing'
        -- means no limit)
-       -> T.Text
+       -> BS.ByteString
        -- ^ The initial content
        -> Maybe (Ptr Tree)
        -> Maybe (ForeignPtr Cursor)
        -> Maybe (Markup V.Attr)
-       -> Editor T.Text n
-editorText = editor
-
--- | Construct an editor over 'String' values
-editor :: Z.GenericTextZipper a
-       => n
-       -- ^ The editor's name (must be unique)
-       -> Maybe Int
-       -- ^ The limit on the number of lines in the editor ('Nothing'
-       -- means no limit)
-       -> a
-       -- ^ The initial content
-       -> Maybe (Ptr Tree)
-       -> Maybe (ForeignPtr Cursor)
-       -> Maybe (Markup V.Attr)
-       -> Editor a n
-editor name limit s = Editor (Z.textZipper (Z.lines s) limit) name
+       -> Editor BS.ByteString n
+editorText name limit s = Editor (Z.byteStringZipper (BS.lines s) limit) name
 
 -- | Apply an editing operation to the editor's contents. Bear in mind
 -- that you should only apply zipper operations that operate on the
 -- current line; the editor will only ever render the first line of
 -- text.
-applyEdit :: (Z.TextZipper t -> Z.TextZipper t)
+applyEdit :: (Z.ByteStringZipper t -> Z.ByteStringZipper t)
           -- ^ The 'Data.Text.Zipper' editing transformation to apply
           -> Editor t n
           -> Editor t n
@@ -283,24 +266,24 @@ getEditContents e = Z.getText $ e^.editContentsL
 -- name for its scrollable viewport handle and the name is also used to
 -- report mouse events.
 renderEditor :: (Ord n, Show n)
-             => ([T.Text] -> Widget n)
+             => ([BS.ByteString] -> Widget n)
              -- ^ The content drawing function
              -> Bool
              -- ^ Whether the editor has focus. It will report a cursor
              -- position if and only if it has focus.
-             -> Editor T.Text n
+             -> Editor BS.ByteString n
              -- ^ The editor.
              -> Widget n
 renderEditor draw foc e = -- TODO remove draw
     let cp = Z.cursorPosition z
         z = e^.editContentsL
-        toLeft = Z.take (cp^._2) (Z.currentLine z)
+        toLeft = TE.decodeUtf8 $ BS.take (cp^._2) (Z.currentLine z)
         cursorLoc = Location (textWidth toLeft, cp^._1)
         limit = case e^.editContentsL.to Z.getLineLimit of
             Nothing -> id
             Just lim -> vLimit lim
         atChar = charAtCursor $ e^.editContentsL
-        atCharWidth = maybe 1 textWidth atChar
+        atCharWidth = maybe 1 (textWidth . TE.decodeUtf8) atChar
     in withAttr (if foc then editFocusedAttr else editAttr) $
        limit $
        viewport (e^.editorNameL) Both $
@@ -310,15 +293,15 @@ renderEditor draw foc e = -- TODO remove draw
             Nothing -> txt ""
             Just m ->
                 if isEmpty m
-                    then txt $ T.unlines $ getEditContents e
+                    then txt $ TE.decodeUtf8 $ BS.unlines $ getEditContents e
                     else markup m
        
 
-charAtCursor :: (Z.GenericTextZipper t) => Z.TextZipper t -> Maybe t
+charAtCursor :: Z.ByteStringZipper BS.ByteString -> Maybe BS.ByteString
 charAtCursor z =
     let col = snd $ Z.cursorPosition z
         curLine = Z.currentLine z
-        toRight = Z.drop col curLine
-    in if Z.length toRight > 0
-       then Just $ Z.take 1 toRight
+        toRight = BS.drop col curLine
+    in if BS.length toRight > 0
+       then Just $ BS.take 1 toRight
        else Nothing
