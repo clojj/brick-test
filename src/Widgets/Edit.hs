@@ -250,11 +250,8 @@ editorText :: n
        -- means no limit)
        -> String
        -- ^ The initial content
-       -> Maybe (Ptr Tree)
-       -> Maybe (ForeignPtr Cursor)
-       -> Maybe (Markup V.Attr)
        -> Editor BS.ByteString n
-editorText name limit s = Editor (Z.byteStringZipper (BS.lines $ BS.fromString s) limit) name
+editorText name limit s = Editor (Z.byteStringZipper (BS.lines $ BS.fromString s) limit) name Nothing Nothing (Just $ fromText (T.pack s))
 
 -- | Apply an editing operation to the editor's contents. Bear in mind
 -- that you should only apply zipper operations that operate on the
