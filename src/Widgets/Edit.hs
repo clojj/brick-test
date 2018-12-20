@@ -193,7 +193,7 @@ initEvent ed = do
         return (fgnPtrCursor, tree)
   return $ ed { tree = Just initialTree, fgnPtrCursor = Just fpc }
 
-type ZipperFunction a = Z.TextZipper a -> Z.TextZipper a
+type ZipperFunction a = Z.ByteStringZipper a -> Z.ByteStringZipper a
 
 data EditEvent a = Nav (ZipperFunction a) | Mod (ZipperFunction a)
 
