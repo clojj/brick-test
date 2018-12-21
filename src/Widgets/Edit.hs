@@ -82,7 +82,6 @@ import           Foreign.Ptr                    ( Ptr(..)
                                                 , nullPtr
                                                 )
 import Data.Maybe
-import Data.ByteString.Zipper (unlines')
 
 -- | Editor state.  Editors support the following events by default:
 --
@@ -185,7 +184,7 @@ spanInfoAdvance text pos ptrCur mup = do
 initEvent :: Editor BS.ByteString n -> EventM n (Editor BS.ByteString n)
 initEvent ed = do
   (fpc, initialTree) <- liftIO $ 
-    BSU.unsafeUseAsCStringLen (unlines' $ Z.getText (editContents ed)) $ \ (str, len) -> do
+    BSU.unsafeUseAsCStringLen (BS.unlines $ Z.getText (editContents ed)) $ \ (str, len) -> do
         tree       <- hts_parse_with_language tree_sitter_haskell str (fromIntegral len)
         fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
         -- addForeignPtrFinalizer funptr_ts_cursor_free fgnPtrCursor
@@ -227,7 +226,7 @@ handleEditorEvent e ed =
             Nav _ -> return ed'
             Mod _ -> do
                         (newTree, newMarkup) <- liftIO $ do
-                            let text = unlines' $ Z.getText (editContents ed')
+                            let text = BS.unlines $ Z.getText (editContents ed')
 
                             BSU.unsafeUseAsCStringLen text $ \ (str, len) -> 
 
@@ -307,7 +306,7 @@ renderEditor draw foc e = -- TODO remove draw
             Nothing -> txt ""
             Just m ->
                 if isEmpty m
-                    then txt $ TE.decodeUtf8 $ unlines' $ getEditContents e
+                    then txt $ TE.decodeUtf8 $ BS.unlines $ getEditContents e
                     else markup m
        
 

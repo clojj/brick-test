@@ -27,7 +27,7 @@ import qualified Widgets.Edit                  as E
 import qualified Brick.Widgets.Center          as C
 import qualified Brick.Widgets.Border          as B
 import           Brick.Widgets.Core
-import Data.ByteString.Zipper (moveCursor, unlines')
+import Data.ByteString.Zipper (moveCursor)
 import           Data.Tuple                     ( swap )
 
 import qualified Data.ByteString.UTF8 as BS
@@ -54,7 +54,7 @@ drawUi st = [editorLayer st <+> proseLayer st]
 
 editorLayer :: St -> Widget Name
 editorLayer st = C.hCenterLayer
-  (vLimit 20 $ hLimit 80 $ E.renderEditor (txt . TE.decodeUtf8 . unlines') True (st ^. edit))
+  (vLimit 20 $ hLimit 80 $ E.renderEditor (txt . TE.decodeUtf8 . BS.unlines) True (st ^. edit))
 
 proseLayer :: St -> Widget Name
 proseLayer st =
