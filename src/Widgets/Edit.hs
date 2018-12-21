@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE UnicodeSyntax #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -204,6 +205,8 @@ getEvent ee = case ee of
 handleEditorEvent :: Event -> Editor BS.ByteString n -> EventM n (Editor BS.ByteString n)
 handleEditorEvent e ed =
     let f = case e of
+                EvKey (KChar 'q') [MCtrl]       -> Mod (Z.insertMany (BS.fromString "module many--ε")) -- TODO remove (just testing)
+
                 EvKey (KChar 'a') [MCtrl]       -> Nav Z.gotoBOL
                 EvKey (KChar 'e') [MCtrl]       -> Nav Z.gotoEOL
                 EvKey KUp []                    -> Nav Z.moveUp
@@ -247,10 +250,10 @@ editorText :: n
        -> Maybe Int
        -- ^ The limit on the number of lines in the editor ('Nothing'
        -- means no limit)
-       -> String
+       -> BS.ByteString
        -- ^ The initial content
        -> Editor BS.ByteString n
-editorText name limit s = Editor (Z.byteStringZipper (BS.lines $ BS.fromString s) limit) name Nothing Nothing (Just $ fromText (T.pack s))
+editorText name limit bs = Editor (Z.byteStringZipper (BS.lines bs) limit) name Nothing Nothing (Just $ fromText (TE.decodeUtf8 bs))
 
 -- | Apply an editing operation to the editor's contents. Bear in mind
 -- that you should only apply zipper operations that operate on the
