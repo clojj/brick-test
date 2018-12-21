@@ -54,7 +54,7 @@ drawUi st = [editorLayer st <+> proseLayer st]
 
 editorLayer :: St -> Widget Name
 editorLayer st = C.hCenterLayer
-  (vLimit 20 $ hLimit 80 $ E.renderEditor (str . BS.toString . unlines') True (st ^. edit))
+  (vLimit 20 $ hLimit 80 $ E.renderEditor (txt . TE.decodeUtf8 . unlines') True (st ^. edit))
 
 proseLayer :: St -> Widget Name
 proseLayer st =

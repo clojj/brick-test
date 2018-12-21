@@ -152,7 +152,7 @@ packNodeWidget ptrCur nav (pos, (text, mup)) =
         p <- hasParent
         case p of
             True  -> return (pos, (text, mup))
-            False -> let markupTail = if pos < BS.length text then fromText $ T.pack (BS.toString $ BS.drop pos text) else mempty
+            False -> let markupTail = if pos < BS.length text then fromText $ TE.decodeUtf8 $ BS.drop pos text else mempty
                      in return (pos, (text, mup <> markupTail))
 
 spanInfoAdvance :: BS.ByteString -> Int -> PtrCursor -> Markup V.Attr -> IO (Int, Markup V.Attr)
@@ -172,10 +172,10 @@ spanInfoAdvance text pos ptrCur mup = do
                 d             = start' - pos
                 dn            = end' - start'
 
-                textBefore    = T.pack $ BS.toString $ BS.take d text'
+                textBefore    = TE.decodeUtf8 $ BS.take d text'
                 markupText    = textBefore @@ bg V.green
 
-                nodeTxt       = T.pack $ BS.toString $ BS.take dn (BS.drop d text')
+                nodeTxt       = TE.decodeUtf8 $ BS.take dn (BS.drop d text')
                 markupNode    = nodeTxt @@ fg V.blue
 
                 mup'          = mup <> markupText <> markupNode
@@ -294,13 +294,13 @@ renderEditor :: (Ord n, Show n)
 renderEditor draw foc e = -- TODO remove draw
     let cp = Z.cursorPosition z
         z = e^.editContentsL
-        toLeft = T.pack $ BS.toString $ BS.take (cp^._2) (Z.currentLine z)
+        toLeft = TE.decodeUtf8 $ BS.take (cp^._2) (Z.currentLine z)
         cursorLoc = Location (textWidth toLeft, cp^._1)
         limit = case e^.editContentsL.to Z.getLineLimit of
             Nothing -> id
             Just lim -> vLimit lim
         atChar = charAtCursor $ e^.editContentsL
-        atCharWidth = maybe 1 (textWidth . T.pack . BS.toString) atChar
+        atCharWidth = maybe 1 (textWidth . TE.decodeUtf8) atChar
     in withAttr (if foc then editFocusedAttr else editAttr) $
        limit $
        viewport (e^.editorNameL) Both $
@@ -310,7 +310,7 @@ renderEditor draw foc e = -- TODO remove draw
             Nothing -> txt ""
             Just m ->
                 if isEmpty m
-                    then str $ BS.toString $ unlines' $ getEditContents e
+                    then txt $ TE.decodeUtf8 $ unlines' $ getEditContents e
                     else markup m
        
 
