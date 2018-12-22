@@ -173,7 +173,7 @@ spanInfoAdvance text pos ptrCur mup = do
                 dn            = end' - start'
 
                 textBefore    = TE.decodeUtf8 $ BS.take d text'
-                markupText    = textBefore @@ bg V.green
+                markupText    = textBefore @@ bg V.blue
 
                 nodeTxt       = TE.decodeUtf8 $ BS.take dn (BS.drop d text')
                 markupNode    = nodeTxt @@ fg V.blue
@@ -205,7 +205,7 @@ getEvent ee = case ee of
 handleEditorEvent :: Event -> Editor BS.ByteString n -> EventM n (Editor BS.ByteString n)
 handleEditorEvent e ed =
     let f = case e of
-                EvKey (KChar 'q') [MCtrl]       -> Mod (Z.insertMany (BS.fromString "module many--ε")) -- TODO remove (just testing)
+                EvKey (KChar 'q') [MCtrl]       -> Mod (Z.insertMany' "many--ε") -- TODO remove (just testing)
 
                 EvKey (KChar 'a') [MCtrl]       -> Nav Z.gotoBOL
                 EvKey (KChar 'e') [MCtrl]       -> Nav Z.gotoEOL

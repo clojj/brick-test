@@ -137,5 +137,5 @@ main = do
            \Excepteur sint occaecat cupidatat not proident,\n\
            \sunt in culpa qui officia deserunt mollit\n\
            \anim id est laborum.\n"
-    (E.editorText TextBox Nothing (BS.fromString "ε"))
+    (E.editorText TextBox Nothing (BS.fromString "--ε"))
 
