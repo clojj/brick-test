@@ -4,23 +4,10 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE CPP #-}
--- | This module provides a basic text editor widget. You'll need to
--- embed an 'Editor' in your application state and transform it with
--- 'handleEditorEvent' when relevant events arrive. To get the contents
--- of the editor, just use 'getEditContents'. To modify it, use the
--- 'Z.TextZipper' interface with 'applyEdit'.
---
--- The editor's 'handleEditorEvent' function handles a set of basic
--- input events that should suffice for most purposes; see the source
--- for a complete list.
---
--- Bear in mind that the editor provided by this module is intended to
--- provide basic input support for brick applications but it is not
--- intended to be a replacement for your favorite editor such as Vim or
--- Emacs. It is also not suitable for building sophisticated editors. If
--- you want to build your own editor, I suggest starting from scratch.
+
 module Widgets.Edit
   ( Editor(editContents, editorName)
+  , tsTransformMarkup
   , initEvent
   -- * Constructing an editor
   , editorText
