@@ -29,27 +29,32 @@ import           Control.Exception.Assert
 
 main :: IO ()
 main =
-  let source = "odule A where"
-      z      = Z.byteStringZipper (BSU8.lines $ BSU8.fromString source) Nothing
+  let source = "odule A where\nf = undefined"
+      z      = Z.byteStringZipper (BSU8.lines' $ BSU8.fromString source) Nothing
       z'     = Z.insertChar 'm' z
   in  do
         let bs = BSU8.unlines $ Z.getByteString z'
 
-        (newTree, newMarkup) <-
-          BSU.unsafeUseAsCStringLen bs $ \(str, len) -> do
-            fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
-            withForeignPtr fgnPtrCursor $ \cur -> do
-              tree <- hts_parse_with_language tree_sitter_haskell
-                                              str
-                                              (fromIntegral len)
-              -- tree <- hts_parser_parse_string str (fromIntegral len)
-              ts_cursor_reset_root tree cur
-              (pos, (_, markup)) <- tsTransformMarkup bs cur
-              return (tree, markup)
+        (newTree, newMarkup) <- BSU.unsafeUseAsCStringLen bs $ \(str, len) -> do
+          fgnPtrCursor <- mallocForeignPtr :: IO (ForeignPtr Cursor)
+          withForeignPtr fgnPtrCursor $ \cur -> do
+            tree <- hts_parse_with_language tree_sitter_haskell
+                                            str
+                                            (fromIntegral len)
+            -- TODO zipper-edit, re-parse
+            -- tree <- hts_parser_parse_string str (fromIntegral len)
+            -- TODO tsInputEdit
+            ts_cursor_reset_root tree cur
+            (pos, (_, markup)) <- tsTransformMarkup bs cur
+            return (tree, markup)
 
         pPrint newMarkup
         let Markup (bs, as) = newMarkup
-        print $ byEq assert "lengths of Markup components differ" (length bs) (length as) "Markup lengths Ok"
+        print $ byEq assert
+                     "lengths of Markup components differ"
+                     (length bs)
+                     (length as)
+                     "Markup lengths Ok"
 
 
 -- from brick Markup
