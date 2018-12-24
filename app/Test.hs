@@ -16,8 +16,8 @@ main =
 
       z'   = Z.insertMany' "ε" z
       z''  = Z.deletePrevChar $ Z.moveLeft z'
-      txt  = TE.decodeUtf8 (BS.unlines (Z.getText z'))
-      txt' = TE.decodeUtf8 (BS.unlines (Z.getText z''))
+      txt  = TE.decodeUtf8 (BS.unlines (Z.getByteString z'))
+      txt' = TE.decodeUtf8 (BS.unlines (Z.getByteString z''))
 
     in do
       putStrLn $ T.unpack txt

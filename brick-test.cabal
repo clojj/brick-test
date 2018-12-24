@@ -76,6 +76,10 @@ executable it
     , tree-sitter-haskell
     , tree-sitter-common
     , brick-test
+    , vty
+    , brick
+    , pretty-simple
+    , assert
     
   default-language: Haskell2010
 

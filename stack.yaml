@@ -51,6 +51,7 @@ packages:
 # (e.g., acme-missiles-0.3)
 extra-deps:
 - vty-5.25.1@sha256:45ecd481dc319d68cf5969fc2ff18b22b8ae03f7534d94bd4bc8ad3dfe94fc3b
+- assert-0.0.1.2@sha256:d1839198cf04396641280154e766ea3340f6109849d9d243286256f5fa744754
 
 # Override default flag values for local packages and extra-deps
 # flags: {}
