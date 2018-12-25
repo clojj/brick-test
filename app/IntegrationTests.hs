@@ -29,7 +29,7 @@ import           Control.Exception.Assert
 
 main :: IO ()
 main =
-  let source = "odule A where\nf = undefined"
+  let source = "odule A where --comment\nf = undefined"
       z      = Z.byteStringZipper (BSU8.lines' $ BSU8.fromString source) Nothing
       z'     = Z.insertChar 'm' z
   in  do
@@ -97,9 +97,7 @@ initMarkup
   -> Int
   -> PtrCursor
   -> IO (Int, (BSU8.ByteString, Markup V.Attr))
-initMarkup bs pos ptrCur = do
-  (pos', mup) <- spanInfoAdvance bs pos ptrCur mempty
-  return (pos', (bs, mup))
+initMarkup bs pos ptrCur = spanInfoAdvance bs pos ptrCur mempty
 
 packNodeMarkup
   :: PtrCursor
@@ -107,35 +105,30 @@ packNodeMarkup
   -> (Int, (BSU8.ByteString, Markup V.Attr))
   -> IO (Int, (BSU8.ByteString, Markup V.Attr))
 packNodeMarkup ptrCur nav (pos, (bs, mup)) = case nav of
-  TreeSitter.CursorApi.Cursor.Down -> do
-    (pos', mup') <- spanInfoAdvance bs pos ptrCur mup
-    return (pos', (bs, mup'))
 
-  TreeSitter.CursorApi.Cursor.Next -> do
-    (pos', mup') <- spanInfoAdvance bs pos ptrCur mup
-    return (pos', (bs, mup'))
-
-  TreeSitter.CursorApi.Cursor.Up -> do
+  TreeSitter.CursorApi.Cursor.Up   -> do
     p <- hasParent
-    case p of
-      True -> return (pos, (bs, mup))
-      False ->
+    if p
+      then return (pos, (bs, mup))
+      else
         let markupTail = if pos < BSU8.length bs
               then fromByteString $ BSU8.drop pos bs
               else mempty
         in  return (pos, (bs, mup <> markupTail))
+
+  _ -> spanInfoAdvance bs pos ptrCur mup
 
 spanInfoAdvance
   :: BSU8.ByteString
   -> Int
   -> PtrCursor
   -> Markup V.Attr
-  -> IO (Int, Markup V.Attr)
+  -> IO (Int, (BSU8.ByteString, Markup V.Attr))
 spanInfoAdvance bs pos ptrCur mup = do
   spanInfo <- spanInfoFromCursor ptrCur
   case spanInfo of
-    Token _ _ _ -> advanceToken spanInfo
-    _           -> return (pos, mup)
+    Token{} -> advanceToken spanInfo
+    _       -> return (pos, (bs, mup))
         -- TODO produce Error markdown-style
         -- Error start end    -> return (pos, mup)
  where
@@ -153,5 +146,5 @@ spanInfoAdvance bs pos ptrCur mup = do
         markupNode = nodeBS @@ fg V.blue
 
         mup'       = mup <> markupBS <> markupNode
-    in  return (end', mup')
+    in  return (end', (bs, mup'))
 
